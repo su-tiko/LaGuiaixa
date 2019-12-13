@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>La Guiaixa</title>
+  <style>
+    html, body {
+      height: 100vh;
+      width: 100vw;
+      padding: 0;
+      margin: 0;
+    }
+
+    #main-container {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+      background: whitesmoke;
+    }
+
+    .card {
+      background: white;
+      height: 80%;
+      width: 500px;
+      border-radius: 2%;
+      -webkit-box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.5);
+      -moz-box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.5);
+      box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.5);
+
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .button-list {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-around;
+      
+    }
+
+    .button {
+      height: 40px;
+      width: 40px;
+      margin: 0 auto;
+      border: 1px solid beige;
+      border-radius: 2%;
+    }
+
+    .button-list {
+      margin-top: 5em;
+    }
+
+    button {
+      width: 150px;
+      height: 45px;
+    }
+
+    .input-text {
+      width: 80%;
+      height: 25px;
+    }
+
+    .control {
+      display: none;
+    }
+
+    .visible {
+      display: block !important;
+    }
+
+    #token {
+       position: absolute;
+       bottom: 0;
+       width: 80%;
+    }
+
+    #errors {
+      position: absolute;
+      top: 1em;
+      color: crimson;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="main-container">
+    <div id="errors"></div>
+    <div class="card">
+      <h1>La Guiaixa</h1>
+      <label for="spotifyUrl">Pega una URL de Spotify</label>
+      <input type="text" id="spotifyUrl" class="input-text" value="https://open.spotify.com/track/2YnfotbZGTfV27GHMUeC5r" />
+      <div class="button-list">
+        <button id="btnStart" onclick="start()" class="control visible">Començar</button>
+        <button id="btnResume" onclick="resume()" class="control">Continuar</button>
+        <img id="imgPlaying" src="playing.gif" class="control" />
+      </div>
+    </div>
+    <input type="text" id="token" placeholder="Spotify Token"/>
+  </div>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
+  <script>
+    // Controls
+    const btnStart = document.getElementById('btnStart');
+    const btnResume = document.getElementById('btnResume');
+    const imgPlaying = document.getElementById('imgPlaying');
+
+    const txtToken = document.getElementById('token');
+    const errors = document.getElementById('errors');
+
+    function getTrackId(spotifyUrl) {
+      let comps = spotifyUrl.split('/');
+      return comps[comps.length - 1];
+    }
+
+    function getCurrentUri() {
+      return getTrackId(document.getElementById('spotifyUrl').value)
+    }
+
+    function getRndInteger(min, max) {
+      return Math.floor(Math.random() * (max - min) ) + min;
+    }
+
+    function getRandomWait() {
+      const wait = getRndInteger(5, 35);
+      console.log(`Playing for ${wait} seconds...`)
+      return wait * 1000;
+    }
+
+    function printError(error) {
+      errors.innerHTML = `<p>${error}</p>`
+    }
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+        window.start = () => {
+          const token = txtToken.value;
+          const player = new Spotify.Player({
+            name: 'La Guiaixa',
+            getOAuthToken: cb => { cb(token); }
+          });
+
+          const play = ({
+              spotify_uri,
+              playerInstance: {
+                _options: {
+                  getOAuthToken,
+                  id
+                }
+              }
+          }) => {
+              getOAuthToken(access_token => {
+                  fetch(`https://api.spotify.com/v1/me/player/play?device_id=${id}`, {
+                      method: 'PUT',
+                      body: JSON.stringify({ uris: [spotify_uri] }),
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${access_token}`
+                      },
+                  });
+              });
+          };
+
+          // Error handling
+          player.addListener('initialization_error', ({ message }) => { 
+            printError(message);
+            console.error(message); 
+          });
+          
+          player.addListener('authentication_error', ({ message }) => { 
+            printError(message);
+            console.error(message); 
+          });
+          
+          player.addListener('account_error', ({ message }) => { 
+            printError(message);
+            console.error(message); 
+          });
+          
+          player.addListener('playback_error', ({ message }) => { 
+            printError(message);
+            console.error(message); 
+          });
+
+          // Playback status updates
+          player.addListener('player_state_changed', state => { 
+            console.log('status changed', state);
+
+            for (element of document.getElementsByClassName('visible')) {
+              element.classList.remove('visible');
+            }
+
+            if (state.paused) {
+              btnResume.classList.add('visible');
+            } else {
+              imgPlaying.classList.add('visible');
+              setTimeout(() => {
+                console.log('timeout!');
+                player.pause()
+              }, getRandomWait())
+            }
+          });
+
+          // Ready
+          player.addListener('ready', ({ device_id }) => {
+            console.log('Ready with Device ID', device_id);
+            play({
+              playerInstance: player,
+              spotify_uri: `spotify:track:${getCurrentUri()}`,
+            });
+          });
+
+          // Not Ready
+          player.addListener('not_ready', ({ device_id }) => {
+            const message = `Device ID has gone offline ${device_id}`;
+            printError(message);
+            console.log(message);
+          });
+          
+          window.player = player;
+
+          // Connect to the player!
+          player.connect();
+        }
+
+        window.resume = () => {
+          player.resume();
+        }
+    };
+
+
+    
+  </script>
+</body>
+</html>
